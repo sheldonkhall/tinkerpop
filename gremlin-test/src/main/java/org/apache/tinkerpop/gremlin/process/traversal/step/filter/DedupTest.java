@@ -91,6 +91,10 @@ public abstract class DedupTest extends AbstractGremlinProcessTest {
 
     public abstract Traversal<Vertex, Long> get_g_V_repeatXdedupX_timesX2X_count();
 
+    public abstract Traversal<Vertex, Long> get_g_V_asXaX_outXcreatedX_inXcreatedX_asXbX_dedupXa_bX_byXidX_count();
+
+    public abstract Traversal<Vertex, Long> get_g_V_outXcreatedX_dedup_count();
+
     @Test
     @LoadGraphWith(MODERN)
     public void g_V_out_in_valuesXnameX_fold_dedupXlocalX_unfold() {
@@ -312,6 +316,24 @@ public abstract class DedupTest extends AbstractGremlinProcessTest {
         assertFalse(traversal.hasNext());
     }
 
+    @Test
+    @LoadGraphWith(MODERN)
+    public void g_V_outXcreatedX_dedup_count() {
+        final Traversal<Vertex, Long> traversal = get_g_V_outXcreatedX_dedup_count();
+        printTraversalForm(traversal);
+        assertEquals(2L, traversal.next().longValue());
+        assertFalse(traversal.hasNext());
+    }
+
+    @Test
+    @LoadGraphWith(MODERN)
+    public void g_V_asXaX_outXcreatedX_inXcreatedX_asXbX_dedupXa_bX_byXidX_count() {
+        final Traversal<Vertex, Long> traversal = get_g_V_asXaX_outXcreatedX_inXcreatedX_asXbX_dedupXa_bX_byXidX_count();
+        printTraversalForm(traversal);
+        assertEquals(9L, traversal.next().longValue());
+        assertFalse(traversal.hasNext());
+    }
+
 
     public static class Traversals extends DedupTest {
         @Override
@@ -392,6 +414,16 @@ public abstract class DedupTest extends AbstractGremlinProcessTest {
         @Override
         public Traversal<Vertex, Long> get_g_V_repeatXdedupX_timesX2X_count() {
             return g.V().repeat(dedup()).times(2).count();
+        }
+
+        @Override
+        public Traversal<Vertex, Long> get_g_V_outXcreatedX_dedup_count() {
+            return g.V().out("created").dedup().count();
+        }
+
+        @Override
+        public Traversal<Vertex, Long> get_g_V_asXaX_outXcreatedX_inXcreatedX_asXbX_dedupXa_bX_byXidX_count() {
+            return g.V().as("a").out("created").in("created").as("b").dedup("a", "b").by(T.id).count();
         }
     }
 }

@@ -109,5 +109,15 @@ public abstract class GroovyDedupTest {
         public Traversal<Vertex, Long> get_g_V_repeatXdedupX_timesX2X_count() {
             new ScriptTraversal<>(g, "gremlin-groovy", "g.V.repeat(dedup()).times(2).count")
         }
+
+        @Override
+        public Traversal<Vertex, Long> get_g_V_outXcreatedX_dedup_count() {
+            new ScriptTraversal<>(g, "gremlin-groovy", "g.V.out('created').dedup.count")
+        }
+
+        @Override
+        public Traversal<Vertex, Long> get_g_V_asXaX_outXcreatedX_inXcreatedX_asXbX_dedupXa_bX_byXidX_count() {
+            new ScriptTraversal<>(g, "gremlin-groovy", "g.V.as('a').out('created').in('created').as('b').dedup('a', 'b').by(id).count")
+        }
     }
 }
