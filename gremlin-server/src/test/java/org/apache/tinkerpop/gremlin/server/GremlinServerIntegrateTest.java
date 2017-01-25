@@ -42,8 +42,8 @@ import org.apache.tinkerpop.gremlin.driver.ser.Serializers;
 import org.apache.tinkerpop.gremlin.driver.simple.SimpleClient;
 import org.apache.tinkerpop.gremlin.groovy.jsr223.GremlinGroovyScriptEngine;
 import org.apache.tinkerpop.gremlin.groovy.jsr223.GroovyCompilerGremlinPlugin;
-import org.apache.tinkerpop.gremlin.groovy.jsr223.customizer.ConfigurationCustomizerProvider;
 import org.apache.tinkerpop.gremlin.groovy.jsr223.customizer.SimpleSandboxExtension;
+import org.apache.tinkerpop.gremlin.jsr223.ScriptFileGremlinPlugin;
 import org.apache.tinkerpop.gremlin.process.remote.RemoteGraph;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -64,7 +64,6 @@ import org.junit.Test;
 import java.lang.reflect.Field;
 import java.nio.channels.ClosedChannelException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,7 +75,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -93,7 +91,6 @@ import static org.hamcrest.core.StringStartsWith.startsWith;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.junit.Assume.assumeThat;
 import static org.junit.Assert.assertEquals;
 
 /**
@@ -170,6 +167,8 @@ public class GremlinServerIntegrateTest extends AbstractGremlinServerIntegration
                 return settings;
             case "shouldUseSimpleSandbox":
                 settings.scriptEngines.get("gremlin-groovy").plugins.put(GroovyCompilerGremlinPlugin.class.getName(), getScriptEngineConfForSimpleSandbox());
+                // remove the script because it isn't used in the test but also because it's not CompileStatic ready
+                settings.scriptEngines.get("gremlin-groovy").plugins.remove(ScriptFileGremlinPlugin.class.getName());
                 break;
             case "shouldUseInterpreterMode":
                 settings.scriptEngines.get("gremlin-groovy").plugins.put(GroovyCompilerGremlinPlugin.class.getName(), getScriptEngineConfForInterpreterMode());
@@ -178,6 +177,7 @@ public class GremlinServerIntegrateTest extends AbstractGremlinServerIntegration
                 settings.scriptEngines.get("gremlin-groovy").plugins.put(GroovyCompilerGremlinPlugin.class.getName(), getScriptEngineConfForTimedInterrupt());
                 break;
             case "shouldUseBaseScript":
+                settings.scriptEngines.get("gremlin-groovy").plugins.put(GroovyCompilerGremlinPlugin.class.getName(), getScriptEngineConfForBaseScript());
                 settings.scriptEngines.get("gremlin-groovy").config = getScriptEngineConfForBaseScript();
                 break;
         }
@@ -218,15 +218,9 @@ public class GremlinServerIntegrateTest extends AbstractGremlinServerIntegration
 
     private static Map<String, Object> getScriptEngineConfForBaseScript() {
         final Map<String,Object> scriptEngineConf = new HashMap<>();
-        final Map<String,Object> compilerCustomizerProviderConf = new HashMap<>();
-        final List<Object> keyValues = new ArrayList<>();
-
         final Map<String,Object> properties = new HashMap<>();
         properties.put("ScriptBaseClass", BaseScriptForTesting.class.getName());
-        keyValues.add(properties);
-
-        compilerCustomizerProviderConf.put(ConfigurationCustomizerProvider.class.getName(), keyValues);
-        scriptEngineConf.put("compilerCustomizerProviders", compilerCustomizerProviderConf);
+        scriptEngineConf.put("compilerConfigurationOptions", properties);
         return scriptEngineConf;
     }
 
