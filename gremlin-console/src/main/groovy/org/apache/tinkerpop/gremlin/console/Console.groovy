@@ -30,8 +30,8 @@ import org.apache.tinkerpop.gremlin.console.commands.SubmitCommand
 import org.apache.tinkerpop.gremlin.console.commands.UninstallCommand
 import org.apache.tinkerpop.gremlin.console.plugin.PluggedIn
 import org.apache.tinkerpop.gremlin.groovy.loaders.GremlinLoader
-import org.apache.tinkerpop.gremlin.groovy.plugin.GremlinPlugin
 import org.apache.tinkerpop.gremlin.jsr223.CoreGremlinPlugin
+import org.apache.tinkerpop.gremlin.jsr223.GremlinPlugin
 import org.apache.tinkerpop.gremlin.jsr223.ImportCustomizer
 import org.apache.tinkerpop.gremlin.process.traversal.util.TraversalExplanation
 import org.apache.tinkerpop.gremlin.structure.Edge
@@ -97,18 +97,10 @@ class Console {
         // hide output temporarily while imports execute
         showShellEvaluationOutput(false)
 
-        if (Mediator.useV3d3) {
-            def imports = (ImportCustomizer) CoreGremlinPlugin.instance().getCustomizers("gremlin-groovy").get()[0]
-            imports.classImports.collect { IMPORT_SPACE + it.canonicalName }.each { groovy.execute(it) }
-            imports.methodImports.collect { IMPORT_STATIC_SPACE + it.getDeclaringClass().getCanonicalName() + "." + it.name}.each{ groovy.execute(it) }
-            imports.enumImports.collect { IMPORT_STATIC_SPACE + it.getDeclaringClass().getCanonicalName() + "." + it.name()}.each{ groovy.execute(it) }
-        } else {
-            // add the default imports
-            new ConsoleImportCustomizerProvider().getCombinedImports().stream()
-                    .collect { IMPORT_SPACE + it }.each { groovy.execute(it) }
-            new ConsoleImportCustomizerProvider().getCombinedStaticImports().stream()
-                    .collect { IMPORT_STATIC_SPACE + it }.each { groovy.execute(it) }
-        }
+        def imports = (ImportCustomizer) CoreGremlinPlugin.instance().getCustomizers("gremlin-groovy").get()[0]
+        imports.classImports.collect { IMPORT_SPACE + it.canonicalName }.each { groovy.execute(it) }
+        imports.methodImports.collect { IMPORT_STATIC_SPACE + it.getDeclaringClass().getCanonicalName() + "." + it.name}.each{ groovy.execute(it) }
+        imports.enumImports.collect { IMPORT_STATIC_SPACE + it.getDeclaringClass().getCanonicalName() + "." + it.name()}.each{ groovy.execute(it) }
 
         final InteractiveShellRunner runner = new InteractiveShellRunner(groovy, handlePrompt)
         runner.setErrorHandler(handleError)
@@ -124,16 +116,9 @@ class Console {
 
         // check for available plugins.  if they are in the "active" plugins strategies then "activate" them
         def activePlugins = Mediator.readPluginState()
-        def pluginClass = mediator.useV3d3 ? org.apache.tinkerpop.gremlin.jsr223.GremlinPlugin : GremlinPlugin
-        ServiceLoader.load(pluginClass, groovy.getInterp().getClassLoader()).each { plugin ->
+        ServiceLoader.load(GremlinPlugin, groovy.getInterp().getClassLoader()).each { plugin ->
             if (!mediator.availablePlugins.containsKey(plugin.class.name)) {
-                def pluggedIn
-
-                if (Mediator.useV3d3) {
-                    pluggedIn = new PluggedIn(new PluggedIn.GremlinPluginAdapter((org.apache.tinkerpop.gremlin.jsr223.GremlinPlugin) plugin, groovy, io), groovy, io, false)
-                } else {
-                    pluggedIn = new PluggedIn((GremlinPlugin) plugin, groovy, io, false)
-                }
+                def pluggedIn = new PluggedIn(new PluggedIn.GremlinPluginAdapter((GremlinPlugin) plugin, groovy, io), groovy, io, false)
 
                 mediator.availablePlugins.put(plugin.class.name, pluggedIn)
 

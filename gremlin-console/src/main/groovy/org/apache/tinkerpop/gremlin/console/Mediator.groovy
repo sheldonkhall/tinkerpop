@@ -34,8 +34,6 @@ class Mediator {
 
     private static String LINE_SEP = System.getProperty("line.separator")
 
-    public static final boolean useV3d3 = System.getProperty("plugins", "v3d2") == "v3d3"
-
     public Mediator(final Console console) {
         this.console = console
     }
