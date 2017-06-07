@@ -23,6 +23,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.Step;
 import org.apache.tinkerpop.gremlin.process.traversal.Traversal;
 import org.apache.tinkerpop.gremlin.process.traversal.step.TraversalParent;
 import org.apache.tinkerpop.gremlin.process.traversal.step.util.ProfileStep;
+import org.javatuples.Pair;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -31,7 +32,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Bob Briody (http://bobbriody.com)
  * @author Marko A. Rodriguez (http://markorodriguez.com)
+ * @author Stephen Mallette (http://stephen.genoprime.com)
  */
 public final class DefaultTraversalMetrics implements TraversalMetrics, Serializable {
     /**
@@ -47,8 +48,10 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
      */
     private static final String[] HEADERS = {"Step", "Count", "Traversers", "Time (ms)", "% Dur"};
 
-    private final Map<String, MutableMetrics> metrics = new HashMap<>();
-    private final TreeMap<Integer, String> indexToLabelMap = new TreeMap<>();
+    /**
+     * {@link ImmutableMetrics} indexed by their step identifier.
+     */
+    private final Map<String, ImmutableMetrics> stepIndexedMetrics = new HashMap<>();
 
     /**
      * A computed value representing the total time spent on all steps.
@@ -56,9 +59,9 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
     private long totalStepDuration;
 
     /**
-     * The metrics that are reported to the caller of profile() which are computed once all metrics have been gathered.
+     * {@link ImmutableMetrics} indexed by their step position.
      */
-    private Map<String, ImmutableMetrics> computedMetrics;
+    private Map<Integer, ImmutableMetrics> positionIndexedMetrics = new LinkedHashMap<>();
 
     /**
      * Determines if final metrics have been computed
@@ -71,10 +74,12 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
     /**
      * This is only a convenient constructor needed for GraphSON deserialization.
      */
-    public DefaultTraversalMetrics(final long totalStepDurationNs, final List<MutableMetrics> metricsMap) {
-        this.totalStepDuration = totalStepDurationNs;
-        this.computedMetrics = new LinkedHashMap<>(metricsMap.size());
-        metricsMap.forEach(metric -> this.computedMetrics.put(metric.getId(), metric.getImmutableClone()));
+    public DefaultTraversalMetrics(final long totalStepDurationNs, final List<MutableMetrics> orderedMetrics) {
+        totalStepDuration = totalStepDurationNs;
+        for (int ix = 0; ix < orderedMetrics.size(); ix++) {
+            stepIndexedMetrics.put(orderedMetrics.get(ix).getId(), orderedMetrics.get(ix).getImmutableClone());
+            positionIndexedMetrics.put(ix, orderedMetrics.get(ix).getImmutableClone());
+        }
     }
 
     @Override
@@ -84,18 +89,17 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
 
     @Override
     public Metrics getMetrics(final int index) {
-        // adjust index to account for the injected profile steps
-        return this.computedMetrics.get(this.indexToLabelMap.get(index));
+        return this.positionIndexedMetrics.get(index);
     }
 
     @Override
     public Metrics getMetrics(final String id) {
-        return this.computedMetrics.get(id);
+        return this.stepIndexedMetrics.get(id);
     }
 
     @Override
     public Collection<ImmutableMetrics> getMetrics() {
-        return this.computedMetrics.values();
+        return this.positionIndexedMetrics.values();
     }
 
     /**
@@ -115,7 +119,7 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
 
         sb.append("\n=============================================================================================================");
 
-        appendMetrics(this.computedMetrics.values(), sb, 0);
+        appendMetrics(this.positionIndexedMetrics.values(), sb, 0);
 
         // Append total duration
         sb.append(String.format("%n%50s %21s %11s %15.3f %8s",
@@ -131,49 +135,34 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
     public synchronized void setMetrics(final Traversal.Admin traversal, final boolean onGraphComputer) {
         if (finalized) throw new IllegalStateException("Metrics have been finalized and cannot be modified");
         finalized = true;
-        addTopLevelMetrics(traversal, onGraphComputer);
         handleNestedTraversals(traversal, null, onGraphComputer);
-        computeTotals();
-    }
-
-    private void computeTotals() {
-        // Create temp list of ordered metrics
-        final List<MutableMetrics> tempMetrics = new ArrayList<>(this.metrics.size());
-        for (final String label : this.indexToLabelMap.values()) {
-            // The indexToLabelMap is sorted by index (key)
-            tempMetrics.add(this.metrics.get(label).clone());
-        }
-
-        // Calculate total duration
-        this.totalStepDuration = 0;
-        tempMetrics.forEach(metric -> this.totalStepDuration += metric.getDuration(MutableMetrics.SOURCE_UNIT));
-
-        // Assign %'s
-        tempMetrics.forEach(m -> {
-            final double dur = m.getDuration(TimeUnit.NANOSECONDS) * 100.d / this.totalStepDuration;
-            m.setAnnotation(PERCENT_DURATION_KEY, dur);
-        });
-
-        // Store immutable instances of the calculated metrics
-        this.computedMetrics = new LinkedHashMap<>(this.metrics.size());
-        tempMetrics.forEach(it -> this.computedMetrics.put(it.getId(), it.getImmutableClone()));
+        addTopLevelMetrics(traversal, onGraphComputer);
     }
 
     private void addTopLevelMetrics(final Traversal.Admin traversal, final boolean onGraphComputer) {
+        this.totalStepDuration = 0;
+
         final List<ProfileStep> profileSteps = TraversalHelper.getStepsOfClass(ProfileStep.class, traversal);
+        final List<Pair<Integer, MutableMetrics>> tempMetrics = new ArrayList<>(profileSteps.size());
+
         for (int ii = 0; ii < profileSteps.size(); ii++) {
             // The index is necessary to ensure that step order is preserved after a merge.
             final ProfileStep step = profileSteps.get(ii);
-            if (onGraphComputer) {
-                final MutableMetrics stepMetrics = traversal.getSideEffects().get(step.getId());
-                this.indexToLabelMap.put(ii, stepMetrics.getId());
-                this.metrics.put(stepMetrics.getId(), stepMetrics);
-            } else {
-                final MutableMetrics stepMetrics = step.getMetrics();
-                this.indexToLabelMap.put(ii, stepMetrics.getId());
-                this.metrics.put(stepMetrics.getId(), stepMetrics);
-            }
+            final MutableMetrics stepMetrics = onGraphComputer ? traversal.getSideEffects().get(step.getId()) : step.getMetrics();
+
+            this.totalStepDuration += stepMetrics.getDuration(MutableMetrics.SOURCE_UNIT);
+            tempMetrics.add(Pair.with(ii, stepMetrics.clone()));
         }
+
+        tempMetrics.forEach(m -> {
+            final double dur = m.getValue1().getDuration(TimeUnit.NANOSECONDS) * 100.d / this.totalStepDuration;
+            m.getValue1().setAnnotation(PERCENT_DURATION_KEY, dur);
+        });
+
+        tempMetrics.forEach(p -> {
+            this.stepIndexedMetrics.put(p.getValue1().getId(), p.getValue1().getImmutableClone());
+            this.positionIndexedMetrics.put(p.getValue0(), p.getValue1().getImmutableClone());
+        });
     }
 
     private void handleNestedTraversals(final Traversal.Admin traversal, final MutableMetrics parentMetrics, final boolean onGraphComputer) {
