@@ -27,6 +27,7 @@ import org.javatuples.Pair;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -216,7 +217,7 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
             // Grab the values
             final Long itemCount = m.getCount(ELEMENT_COUNT_ID);
             final Long traverserCount = m.getCount(TRAVERSER_COUNT_ID);
-            Double percentDur = (Double) m.getAnnotation(PERCENT_DURATION_KEY);
+            final Double percentDur = (Double) m.getAnnotation(PERCENT_DURATION_KEY);
 
             // Build the row string
 
@@ -240,7 +241,50 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
                 sb.append(String.format(" %8.2f", percentDur));
             }
 
+            // process any annotations
+            final Map<String,Object> annotations = m.getAnnotations();
+            if (!annotations.isEmpty()) {
+                // ignore the PERCENT_DURATION_KEY as that is a TinkerPop annotation that is displayed by default
+                annotations.entrySet().stream().filter(kv -> !kv.getKey().equals(PERCENT_DURATION_KEY)).forEach(kv -> {
+                    final String prefix = "  |-";
+                    final String separator = "=";
+                    final String k = prefix + StringUtils.abbreviate(kv.getKey(), 32);
+                    final int valueIndentLen = separator.length() + k.length() + indent;
+                    final int leftover = 110 - valueIndentLen;
+
+                    final String[] splitValues = splitOnSize(kv.getValue().toString(), leftover);
+                    for (int ix = 0; ix < splitValues.length; ix++) {
+                        // the first lines gets the annotation prefix. the rest are indented to the separator
+                        if (ix == 0) {
+                            sb.append(String.format("%n%s", k + separator + splitValues[ix]));
+                        } else {
+                            sb.append(String.format("%n%s", padLeft(splitValues[ix], valueIndentLen - 1)));
+                        }
+                    }
+                });
+            }
+
             appendMetrics(m.getNested(), sb, indent + 1);
         }
+    }
+
+    private static String[] splitOnSize(final String text, final int size) {
+        final String[] ret = new String[(text.length() + size - 1) / size];
+
+        int counter = 0;
+        for (int start = 0; start < text.length(); start += size) {
+            ret[counter] = text.substring(start, Math.min(text.length(), start + size));
+            counter++;
+        }
+
+        return ret;
+    }
+
+    private static String padLeft(final String text, final int amountToPad) {
+        String newText = text;
+        for (int ix = 0; ix < amountToPad; ix++) {
+            newText = " " + newText;
+        }
+        return newText;
     }
 }
