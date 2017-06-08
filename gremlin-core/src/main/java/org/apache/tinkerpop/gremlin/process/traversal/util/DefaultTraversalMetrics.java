@@ -246,9 +246,9 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
             if (!annotations.isEmpty()) {
                 // ignore the PERCENT_DURATION_KEY as that is a TinkerPop annotation that is displayed by default
                 annotations.entrySet().stream().filter(kv -> !kv.getKey().equals(PERCENT_DURATION_KEY)).forEach(kv -> {
-                    final String prefix = "  |-";
+                    final String prefix = "    \\_";
                     final String separator = "=";
-                    final String k = prefix + StringUtils.abbreviate(kv.getKey(), 32);
+                    final String k = prefix + StringUtils.abbreviate(kv.getKey(), 30);
                     final int valueIndentLen = separator.length() + k.length() + indent;
                     final int leftover = 110 - valueIndentLen;
 
@@ -281,6 +281,8 @@ public final class DefaultTraversalMetrics implements TraversalMetrics, Serializ
     }
 
     private static String padLeft(final String text, final int amountToPad) {
+        // not sure why this method needed to exist. stupid string format stuff and commons utilities wouldn't
+        // work for some reason in the context this method was used above.
         String newText = text;
         for (int ix = 0; ix < amountToPad; ix++) {
             newText = " " + newText;
